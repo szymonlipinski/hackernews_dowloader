@@ -29,8 +29,13 @@ Users Data
 
 Algolia allows to get user data only with requests with specific user_id. There is another script hnusers.py
 to get the data for all the users from the files.
-"""
 
+Fields Conversion
+
+- created_at field is removed as it's redundant, there already is created_at_i, which is an integer.
+- text fields are converted from html entities for proper characters, including unicode versions
+
+"""
 
 import argparse
 import csv
@@ -38,11 +43,10 @@ import json
 import os
 from dataclasses import dataclass
 from shutil import move
-from typing import Optional
 
 import requests as r
 
-from .common import convert, limit_rate
+from common import *
 
 # there is about 20M of entries
 # each request returns no more than 1k of entries
@@ -52,9 +56,6 @@ number_of_requests_for_one_file = 1000
 
 # how many entries should be returned per request
 entries_per_request = 1000
-
-# Algolia has a limit of 10k requests per hour
-max_request_per_hour = 9_000
 
 # Temporary file
 temp_fname = "tmp.data.csv"
@@ -68,6 +69,8 @@ base_url = "http://hn.algolia.com/api/v1/search_by_date?" \
 # https://hn.algolia.com/api/v1/items/1
 default_min_created_at_i: int = 1160418111
 
+# The default maximum created_at_i value,
+# set to now() + some small number to avoid rounding problems.
 default_max_created_at_i: int = 41 + int(time.time())
 
 
@@ -83,7 +86,9 @@ class ParsedResponse:
 
 @limit_rate(max_request_per_hour, 3600)
 def get_data(min_created_at_i: int, max_created_at_i: int) -> str:
-
+    """
+    Makes request to the API and returns text reply.
+    """
     url = base_url.format(
         max_created_at_i=max_created_at_i,
         min_created_at_i=min_created_at_i,
@@ -93,6 +98,9 @@ def get_data(min_created_at_i: int, max_created_at_i: int) -> str:
 
 
 def parse_response(response: str) -> ParsedResponse:
+    """
+    Parses the response from the API.
+    """
     res = json.loads(response)
     min_created_at_i = 100000000000
     max_created_at_i = 0
@@ -103,7 +111,6 @@ def parse_response(response: str) -> ParsedResponse:
     entries = []
     for hit in hits:
         entry = dict(
-            created_at=hit["created_at"],
             title=convert(hit["title"]),
             url=hit["url"],
             author=convert(hit["author"]),
@@ -127,10 +134,10 @@ def parse_response(response: str) -> ParsedResponse:
         min_id = min(min_id, obj_id)
         max_id = max(max_id, obj_id)
 
-    nbHits = int(res["nbHits"])
+    nb_hits = int(res["nbHits"])
 
     return ParsedResponse(
-        hits_count=nbHits,
+        hits_count=nb_hits,
         min_created_at_i=min_created_at_i,
         max_created_at_i=max_created_at_i,
         min_id=min_id,
@@ -155,7 +162,10 @@ class ProgramState:
     data_path: str
 
 
-def parse_arguments():
+def parse_arguments() -> ProgramArguments:
+    """
+    Parses arguments and returns parsed version.
+    """
     parser = argparse.ArgumentParser(description='Downloads Hackernews data')
 
     parser.add_argument("--data-path", required=True, help="path to the data directory")
@@ -164,15 +174,18 @@ def parse_arguments():
     parser.add_argument("--max-created-at-i", type=int,
                         help="The maximum value for the created_at_i, default is current timestamp + some small number")
 
-    args = parser.parse_args()
-    return ProgramArguments(**vars(args))
+    return ProgramArguments(**vars(parser.parse_args()))
 
 
-def build_file_name(min_created_at_i, min_id, max_created_at_i, max_id):
+def build_file_name(min_created_at_i: int, min_id: int, max_created_at_i: int, max_id: int) -> str:
+    """Builds file name for the """
     return f"{min_created_at_i}_{max_created_at_i}__{min_id}_{max_id}.data.csv"
 
 
 def run(state: ProgramState):
+    """
+    The main program function.
+    """
     temp_fpath = os.path.join(state.data_path, temp_fname)
 
     use_min_created_at_i = state.min_created_at_i
@@ -195,7 +208,7 @@ def run(state: ProgramState):
                 writer = csv.writer(f)
                 res = get_data(use_min_created_at_i, use_max_created_at_i)
                 res = parse_response(res)
-                print(f"got {len(res.entries)} entries")
+                print(f"got {len(res.entries)} entries for ids: ⦗{res.min_id:,} ⇔ {res.max_id:,}⦘")
 
                 if res.hits_count == 0:
                     no_more_results = True
@@ -220,6 +233,7 @@ def run(state: ProgramState):
         print(f"Written data to a new file: {new_fname}")
 
         if no_more_results:
+            print("No more results found")
             break
 
 
@@ -235,4 +249,5 @@ if __name__ == "__main__":
         max_id=None,
         data_path=args.data_path
     )
-    run(state)
+
+    pid_run(lambda: run(state))

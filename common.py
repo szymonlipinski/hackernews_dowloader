@@ -1,6 +1,12 @@
 import time
 from datetime import datetime as dt
 from html import unescape
+from typing import Optional
+
+from pidfile import PidFile
+
+# Algolia has a limit of 10k requests per hour
+max_request_per_hour = 9_000
 
 
 def limit_rate(number_of_calls: int, in_time: int):
@@ -54,5 +60,15 @@ def limit_rate(number_of_calls: int, in_time: int):
     return decorator
 
 
-def convert(data):
+def convert(data: Optional[str]) -> Optional[str]:
+    """Converts the passed data """
     return unescape(data) if data != None else None
+
+
+def pid_run(func):
+    """
+    Runs the function guarded by a pid file.
+    This is needed to avoid running two scripts using the API at the same time
+    """
+    with PidFile("pidfile"):
+        func()
