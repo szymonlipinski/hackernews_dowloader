@@ -109,3 +109,7 @@ to get the data for all the users from the files.
 
 - created_at field is removed as it's redundant, there already is created_at_i, which is an integer.
 - text fields are converted from html entities for proper characters, including unicode versions
+
+## Required Libraries
+
+The requirements.txt file contains lots of stuff, not only the libraries required to download the HN data. I'm not going to strip this down only to the needed libraries.
